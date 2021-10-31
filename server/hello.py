@@ -62,6 +62,19 @@ def insert_in_queue():
     conn.close()
     return "Success"
 
+@app.route('/queue/remove_first/<int:machine_id>', methods=['POST'])
+def finish_execution(machine_id):
+  remove_current_user_from_queue(machine_id)
+  updated_queue = get_queue_for_machine(machine_id)
+  if len(updated_queue) > 0:
+    call_first_from_queue(updated_queue)
+  return "Success"
+
+@app.route('/notifications/<int:user_id>')
+def notifications(user_id):
+  conn = get_db_connection()
+  return json.dumps(conn.execute('SELECT * FROM notifications WHERE user_id = ? ORDER BY inserted_at DESC', (user_id,)).fetchall())
+
 def key_for_sorting_queue(queue_element):
   return queue_element[QUEUE_ELEMENT_INDEXES['inserted_at']]
 
@@ -76,3 +89,28 @@ def user_in_queue(machine_id, user_id):
   else:
     return False
 
+def remove_current_user_from_queue(machine_id):
+  conn = get_db_connection()
+  conn.execute('UPDATE queue_elements SET status = \'DONE\' WHERE machine_id = ? AND status = \'DOING\'', (machine_id,))
+  conn.commit()
+  conn.close()
+
+def call_first_from_queue(queue):
+  first = queue[0]
+  notify_first_from_queue(first)
+  update_first_from_queue_status(first)
+
+def update_first_from_queue_status(user):
+  conn = get_db_connection()
+  conn.execute('UPDATE queue_elements SET status = \'WAITING_CONFIRMATION\' WHERE id = ?', (user[QUEUE_ELEMENT_INDEXES['id']],))
+  conn.commit()
+  conn.close()
+
+def notify_first_from_queue(user):
+  conn = get_db_connection()
+  machine_name = conn.execute('SELECT name FROM machines WHERE machine_id = ?', (user[QUEUE_ELEMENT_INDEXES['machine_id']],)).fetchall()[0][0]
+  notification_message = f"Sua vez no aparelho {machine_name} chegou!"
+  conn.execute('INSERT INTO notifications(user_id, machine_id, description) VALUES(?, ?, ?, ?)',
+                          (user[QUEUE_ELEMENT_INDEXES['user_id']], user[QUEUE_ELEMENT_INDEXES['machine_id']], notification_message))
+  conn.commit()
+  conn.close()
