@@ -25,7 +25,7 @@ def index():
 
 @app.route('/queue/<int:machine_id>')
 def queue(machine_id):
-  return json.dumps(get_queue_for_machine(machine_id))
+  return json.dumps(get_current_user_waiting_machine(machine_id) + get_queue_for_machine(machine_id))
 
 @app.route('/machines')
 def machines():
@@ -60,6 +60,9 @@ def insert_in_queue():
                             (machine_id, user_id, series, repetitions))
     conn.commit()
     conn.close()
+    if int(position_in_queue(machine_id, user_id)) == 1 and not is_someone_at_machine(machine_id):
+      queue = get_queue_for_machine(machine_id)
+      call_first_from_queue(queue)
     return "Success"
 
 @app.route('/queue/remove_first/<int:machine_id>', methods=['POST'])
@@ -77,17 +80,18 @@ def notifications(user_id):
 
 @app.route('/queue/user_arrived/<int:user_id>/<int:machine_id>', methods=['POST'])
 def user_arrived(user_id, machine_id):
+  conn = get_db_connection()
   user_in_queue = conn.execute('SELECT * FROM queue_elements WHERE machine_id = ? AND status = \'WAITING_CONFIRMATION\' AND user_id = ?', (machine_id, user_id)).fetchall()[0]
+  conn.close()
   if user_in_queue:
     repetitions = user_in_queue[QUEUE_ELEMENT_INDEXES['repetitions']]
     series = user_in_queue[QUEUE_ELEMENT_INDEXES['series']]
     queue_element_id = user_in_queue[QUEUE_ELEMENT_INDEXES['id']]
     # TODO: integrate with embedded system
-    update_first_from_queue_status(queue_element_id, "DOING")
+    update_first_from_queue_status(user_in_queue, "DOING")
     return "Success"
   else:
     return "User not found"
-
 
 def key_for_sorting_queue(queue_element):
   return queue_element[QUEUE_ELEMENT_INDEXES['inserted_at']]
@@ -95,6 +99,10 @@ def key_for_sorting_queue(queue_element):
 def get_queue_for_machine(machine_id):
   conn = get_db_connection()
   return conn.execute('SELECT * FROM queue_elements WHERE machine_id = ? AND status = \'WAITING\' ORDER BY inserted_at ASC', (machine_id,)).fetchall()
+
+def get_current_user_waiting_machine(machine_id):
+  conn = get_db_connection()
+  return conn.execute('SELECT * FROM queue_elements WHERE machine_id = ? AND status = \'WAITING_CONFIRMATION\'', (machine_id,)).fetchall()
 
 def is_user_in_queue(machine_id, user_id):
   position = position_in_queue(machine_id, user_id)
@@ -122,9 +130,17 @@ def update_first_from_queue_status(user_in_queue, new_status):
 
 def notify_first_from_queue(user_in_queue):
   conn = get_db_connection()
-  machine_name = conn.execute('SELECT name FROM machines WHERE machine_id = ?', (user_in_queue[QUEUE_ELEMENT_INDEXES['machine_id']],)).fetchall()[0][0]
+  machine_name = conn.execute('SELECT name FROM machines WHERE id = ?', (user_in_queue[QUEUE_ELEMENT_INDEXES['machine_id']],)).fetchall()[0][0]
   notification_message = f"Sua vez no aparelho {machine_name} chegou!"
-  conn.execute('INSERT INTO notifications(user_id, machine_id, description) VALUES(?, ?, ?, ?)',
+  conn.execute('INSERT INTO notifications(user_id, machine_id, description) VALUES(?, ?, ?)',
                           (user_in_queue[QUEUE_ELEMENT_INDEXES['user_id']], user_in_queue[QUEUE_ELEMENT_INDEXES['machine_id']], notification_message))
   conn.commit()
   conn.close()
+
+def is_someone_at_machine(machine_id):
+  conn = get_db_connection()
+  users = conn.execute('SELECT * FROM queue_elements WHERE machine_id = ? AND status = \'WAITING_CONFIRMATION\' OR status = \'DOING\'', (machine_id,)).fetchall()
+  if len(users) > 0:
+    return True
+  else:
+    return False
