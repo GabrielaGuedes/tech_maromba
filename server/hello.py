@@ -53,6 +53,8 @@ def insert_in_queue():
   if not machine_id or not user_id or not series or not repetitions:
     return "Missing required param"
   else:
+    if user_in_queue(machine_id, user_id):
+      return "Failed. User already is in queue"
     conn = get_db_connection()
     inserted = conn.execute('INSERT INTO queue_elements(machine_id, user_id, series, repetitions) VALUES(?, ?, ?, ?)',
                             (machine_id, user_id, series, repetitions))
@@ -67,4 +69,10 @@ def get_queue_for_machine(machine_id):
   conn = get_db_connection()
   return conn.execute('SELECT * FROM queue_elements WHERE machine_id = ? AND status = \'WAITING\'', (machine_id,)).fetchall()
 
+def user_in_queue(machine_id, user_id):
+  position = position_in_queue(machine_id, user_id)
+  if position != "null":
+    return True
+  else:
+    return False
 
