@@ -8,3 +8,9 @@ To run the server, go to its folder, then:
 `$ export FLASK_APP=hello`
 `$ export FLASK_ENV=development`
 `$ flask run`
+
+## Interface
+
+To run the interface, go to its folder, then:
+`$ npm install`
+`$ npm start`

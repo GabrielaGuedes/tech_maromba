@@ -2,12 +2,14 @@ from flask import Flask, request
 import sqlite3
 import json
 import pdb
+from flask_cors import CORS, cross_origin
 
 def get_db_connection():
   conn = sqlite3.connect('./database/database.db')
   return conn
 
 app = Flask(__name__)
+cors = CORS(app, resources={r"/*": {"origins": "*"}})
 
 QUEUE_ELEMENT_INDEXES = {
   'id': 0,
