@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, Response
 import sqlite3
 import json
 import pdb
@@ -36,14 +36,19 @@ def machines():
   return json.dumps(queue)
 
 @app.route('/queue/<int:machine_id>/<int:user_id>')
-def position_in_queue(machine_id, user_id):
+def position_in_queue(machine_id, user_id, internal=False):
   conn = get_db_connection()
   queue = get_queue_for_machine(machine_id)
   queue.sort(key=key_for_sorting_queue)
   user_id_queue = list(map(lambda x: x[QUEUE_ELEMENT_INDEXES['user_id']], queue))
-  if user_id in user_id_queue:
-    return f"{user_id_queue.index(user_id) + 1}"
-  return "null"
+  if internal:
+    if user_id in user_id_queue:
+      return f"{user_id_queue.index(user_id) + 1}"
+    return "null"
+  else:
+    if user_id in user_id_queue:
+      return Response("{\"result\": " + f"\"{user_id_queue.index(user_id) + 1}\"" + "}", status=200, mimetype='application/json')
+    return Response("{\"result\":\"null\"}", status=400, mimetype='application/json')
 
 @app.route('/queue/insert', methods=['POST'])
 def insert_in_queue():
@@ -53,19 +58,19 @@ def insert_in_queue():
   repetitions = request.json['repetitions']
   
   if not machine_id or not user_id or not series or not repetitions:
-    return "Missing required param"
+    return Response("{\"result\":\"Missing required param\"}", status=400, mimetype='application/json')
   else:
     if is_user_in_queue(machine_id, user_id):
-      return "Failed. User already is in queue"
+      return Response("{\"result\":\"Failed. User already is in queue\"}", status=400, mimetype='application/json')
     conn = get_db_connection()
     inserted = conn.execute('INSERT INTO queue_elements(machine_id, user_id, series, repetitions) VALUES(?, ?, ?, ?)',
                             (machine_id, user_id, series, repetitions))
     conn.commit()
     conn.close()
-    if int(position_in_queue(machine_id, user_id)) == 1 and not is_someone_at_machine(machine_id):
+    if int(position_in_queue(machine_id, user_id, True)) == 1 and not is_someone_at_machine(machine_id):
       queue = get_queue_for_machine(machine_id)
       call_first_from_queue(queue)
-    return "Success"
+    return Response("{\"result\":\"Success\"}", status=200, mimetype='application/json')
 
 @app.route('/queue/remove_first/<int:machine_id>', methods=['POST'])
 def finish_execution(machine_id):
@@ -73,7 +78,7 @@ def finish_execution(machine_id):
   updated_queue = get_queue_for_machine(machine_id)
   if len(updated_queue) > 0:
     call_first_from_queue(updated_queue)
-  return "Success"
+  return Response("{\"result\":\"Success\"}", status=200, mimetype='application/json')
 
 @app.route('/notifications/<int:user_id>')
 def notifications(user_id):
@@ -91,9 +96,9 @@ def user_arrived(user_id, machine_id):
     queue_element_id = user_in_queue[QUEUE_ELEMENT_INDEXES['id']]
     # TODO: integrate with embedded system
     update_first_from_queue_status(user_in_queue, "DOING")
-    return "Success"
+    return Response("{\"result\":\"Success\"}", status=200, mimetype='application/json')
   else:
-    return "User not found"
+    return Response("{\"result\":\"User not found\"}", status=400, mimetype='application/json')
 
 def key_for_sorting_queue(queue_element):
   return queue_element[QUEUE_ELEMENT_INDEXES['inserted_at']]
@@ -107,7 +112,7 @@ def get_current_user_waiting_machine(machine_id):
   return conn.execute('SELECT * FROM queue_elements WHERE machine_id = ? AND status = \'WAITING_CONFIRMATION\'', (machine_id,)).fetchall()
 
 def is_user_in_queue(machine_id, user_id):
-  position = position_in_queue(machine_id, user_id)
+  position = position_in_queue(machine_id, user_id, True)
   if position != "null":
     return True
   else:
