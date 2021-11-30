@@ -31,6 +31,6 @@ export const getNotifications = async (userId) => {
 
 export const userArrived = async (machineId, userId) => {
   return await postRequest(
-    baseUrl + "/queue/user_arrived/" + userId + machineId
+    baseUrl + "/queue/user_arrived/" + userId + "/" + machineId
   );
 };
