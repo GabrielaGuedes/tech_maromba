@@ -3,6 +3,7 @@ import sqlite3
 import json
 import pdb
 from flask_cors import CORS, cross_origin
+import requests as rq
 
 def get_db_connection():
   conn = sqlite3.connect('./database/database.db')
@@ -94,7 +95,10 @@ def user_arrived(user_id, machine_id):
     repetitions = user_in_queue[QUEUE_ELEMENT_INDEXES['repetitions']]
     series = user_in_queue[QUEUE_ELEMENT_INDEXES['series']]
     queue_element_id = user_in_queue[QUEUE_ELEMENT_INDEXES['id']]
-    # TODO: integrate with embedded system
+    try:
+      rq.get(f'http://localhost:5000/{series}/{repetitions}')
+    except:
+      print("não foi possível se comunicar com o embarcado")
     update_first_from_queue_status(user_in_queue, "DOING")
     return Response("{\"result\":\"Success\"}", status=200, mimetype='application/json')
   else:
